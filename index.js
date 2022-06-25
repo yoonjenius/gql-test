@@ -1,4 +1,5 @@
-const { ApolloServer, gql } = require("apollo-server");
+const { ApolloServer, gql, UserInputError } = require("apollo-server");
+const { v4: uuidv4 } = require("uuid");
 
 let authors = [
    {
@@ -79,17 +80,6 @@ let books = [
 ];
 
 const typeDefs = gql`
-   type Query {
-      bookCount: Int!
-      authorCount: Int!
-      allBooks: [Book!]!
-      allAuthor: [Author!]!
-   }
-   type Author {
-      name: String!
-      id: ID!
-      born: Int!
-   }
    type Book {
       title: String!
       published: Int!
@@ -97,26 +87,87 @@ const typeDefs = gql`
       id: ID!
       genres: [String!]!
    }
+   type Author {
+      name: String!
+      id: ID!
+      born: String
+      bookCount: Int!
+   }
+   type Query {
+      bookCount: Int!
+      authorCount: Int!
+      allBook(name: String!): [Book]
+      allAuthors: [Author!]!
+      findGener(genre: String!): [Book]
+   }
+   type Mutation {
+      addBook(title: String!, published: Int!, author: String!, genres: [String!]!): Book
+      editAuthor(name: String!, setBornTo: Int!): Author
+   }
 `;
 
 const resolvers = {
-   Query: {
-      bookCount: () => books.length,
-      authorCount: () => authors.length,
-      allBooks: () => books,
-      allAuthors: () => authors,
-   },
    Book: {
       title: (root) => root.title,
       published: (root) => root.published,
       author: (root) => root.author,
-      genres: (root) => root.genres,
       id: (root) => root.id,
+      genres: (root) => root.genres,
    },
    Author: {
       name: (root) => root.name,
       id: (root) => root.id,
       born: (root) => root.born,
+      bookCount: (root) => {
+         let count = books.filter((book) => book.author === root.name);
+         return count.length;
+      },
+   },
+   Query: {
+      bookCount: () => books.length,
+      authorCount: () => authors.length,
+      allAuthors: () => authors,
+      allBook: (root, args) => books.filter((b) => b.author === args.name),
+      findGener: (root, args) => {
+         let tempo = [];
+         books.map((book) =>
+            book.genres.forEach((genre) => {
+               if (genre === args.genre) {
+                  tempo.push(book);
+               }
+            })
+         );
+         return tempo;
+      },
+   },
+   Mutation: {
+      addBook: (root, args) => {
+         if (books.find((book) => book.title === args.title && book.author === args.author)) {
+            throw new UserInputError("Title with Author must be unique", {
+               invalidArgs: args.title,
+            });
+         }
+         const book = { ...args, id: uuidv4() };
+         const author = { name: book.author, id: book.id };
+         books = books.concat(book);
+         authors = authors.concat(author);
+         return book;
+      },
+      editAuthor: (root, args) => {
+         if (!authors.find((a) => a.name === args.name)) {
+            // throw new UserInputError(`We don't habe ${args.name}`, {
+            //    invalidArgs: args.name,
+            // });
+            return null;
+         } else {
+            const tempAuthor = authors.find((a) => a.name === args.name);
+            const changeAuthor = { ...tempAuthor, born: args.setBornTo };
+            console.log("changeAuthor", changeAuthor);
+            authors = authors.map((a) => (a.name === changeAuthor.name ? changeAuthor : a));
+            console.log(authors);
+            return changeAuthor;
+         }
+      },
    },
 };
 
